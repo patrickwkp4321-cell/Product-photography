@@ -33,9 +33,15 @@ export default function App() {
   const [step, setStep] = useState<Step>('upload');
   const [image, setImage] = useState<string | null>(null);
   const [mimeType, setMimeType] = useState<string>('');
+  const [styleImage, setStyleImage] = useState<string | null>(null);
+  const [styleMimeType, setStyleMimeType] = useState<string>('');
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [selectedConcept, setSelectedConcept] = useState<Concept | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
+  const [background, setBackground] = useState('');
+  const [props, setProps] = useState('');
+  const [atmosphere, setAtmosphere] = useState('');
+  const [useDetailedScene, setUseDetailedScene] = useState(false);
   const [ratio, setRatio] = useState<"1:1" | "3:4" | "4:3" | "9:16" | "16:9">("1:1");
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultImages, setResultImages] = useState<string[]>([]);
@@ -43,17 +49,23 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const styleFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'product' | 'style') => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = (reader.result as string).split(',')[1];
-        setImage(base64);
-        setMimeType(file.type);
-        setStep('analyze');
-        handleAnalyze(base64, file.type);
+        if (type === 'product') {
+          setImage(base64);
+          setMimeType(file.type);
+          setStep('analyze');
+          handleAnalyze(base64, file.type);
+        } else {
+          setStyleImage(base64);
+          setStyleMimeType(file.type);
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -78,12 +90,21 @@ export default function App() {
   };
 
   const handleGenerate = async () => {
-    if (!image || !customPrompt) return;
+    if (!image) return;
+    
+    let finalPrompt = customPrompt;
+    if (useDetailedScene) {
+      finalPrompt = `Background: ${background}. Props: ${props}. Atmosphere/Lighting: ${atmosphere}.`;
+    }
+
+    if (!finalPrompt) return;
+
     setIsProcessing(true);
     setError(null);
     setStep('generate');
     try {
-      const results = await generateAdVariants(image, mimeType, customPrompt, ratio);
+      const styleRef = styleImage ? { base64: styleImage, mimeType: styleMimeType } : undefined;
+      const results = await generateAdVariants(image, mimeType, finalPrompt, ratio, styleRef);
       setResultImages(results);
       setSelectedResultIndex(0);
     } catch (err) {
@@ -98,10 +119,15 @@ export default function App() {
   const reset = () => {
     setStep('upload');
     setImage(null);
+    setStyleImage(null);
     setResultImages([]);
     setConcepts([]);
     setSelectedConcept(null);
     setCustomPrompt('');
+    setBackground('');
+    setProps('');
+    setAtmosphere('');
+    setUseDetailedScene(false);
   };
 
   return (
@@ -158,7 +184,7 @@ export default function App() {
                 <input 
                   type="file" 
                   ref={fileInputRef} 
-                  onChange={handleFileUpload} 
+                  onChange={(e) => handleFileUpload(e, 'product')} 
                   className="hidden" 
                   accept="image/*"
                 />
@@ -266,14 +292,85 @@ export default function App() {
                 </div>
 
                 <div className="space-y-6">
+                  <div className="flex items-center gap-4 border-b border-black/5 pb-2">
+                    <button 
+                      onClick={() => setUseDetailedScene(false)}
+                      className={`text-sm font-bold uppercase tracking-widest transition-opacity ${!useDetailedScene ? 'opacity-100 border-b-2 border-black pb-1' : 'opacity-40'}`}
+                    >
+                      Simple Prompt
+                    </button>
+                    <button 
+                      onClick={() => setUseDetailedScene(true)}
+                      className={`text-sm font-bold uppercase tracking-widest transition-opacity ${useDetailedScene ? 'opacity-100 border-b-2 border-black pb-1' : 'opacity-40'}`}
+                    >
+                      Detailed Scene
+                    </button>
+                  </div>
+
+                  {!useDetailedScene ? (
+                    <div className="space-y-3">
+                      <label className="text-xs font-bold uppercase tracking-widest opacity-40">Scene Prompt</label>
+                      <textarea 
+                        value={customPrompt}
+                        onChange={(e) => setCustomPrompt(e.target.value)}
+                        className="w-full h-32 p-4 bg-white border border-black/10 rounded-2xl focus:outline-none focus:border-black transition-colors resize-none"
+                        placeholder="Describe the environment, lighting, and props..."
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest opacity-40">Background</label>
+                        <input 
+                          value={background}
+                          onChange={(e) => setBackground(e.target.value)}
+                          className="w-full p-4 bg-white border border-black/10 rounded-xl focus:outline-none focus:border-black transition-colors"
+                          placeholder="e.g. A minimalist marble table in a bright studio"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest opacity-40">Props & Elements</label>
+                        <input 
+                          value={props}
+                          onChange={(e) => setProps(e.target.value)}
+                          className="w-full p-4 bg-white border border-black/10 rounded-xl focus:outline-none focus:border-black transition-colors"
+                          placeholder="e.g. Fresh eucalyptus leaves and a glass of water"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-widest opacity-40">Atmosphere & Lighting</label>
+                        <input 
+                          value={atmosphere}
+                          onChange={(e) => setAtmosphere(e.target.value)}
+                          className="w-full p-4 bg-white border border-black/10 rounded-xl focus:outline-none focus:border-black transition-colors"
+                          placeholder="e.g. Soft morning sunlight with long shadows"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
-                    <label className="text-xs font-bold uppercase tracking-widest opacity-40">Scene Prompt</label>
-                    <textarea 
-                      value={customPrompt}
-                      onChange={(e) => setCustomPrompt(e.target.value)}
-                      className="w-full h-32 p-4 bg-white border border-black/10 rounded-2xl focus:outline-none focus:border-black transition-colors resize-none"
-                      placeholder="Describe the environment, lighting, and props..."
-                    />
+                    <label className="text-xs font-bold uppercase tracking-widest opacity-40">Style Reference (Optional)</label>
+                    <div 
+                      onClick={() => styleFileInputRef.current?.click()}
+                      className="w-full h-24 bg-white border border-dashed border-black/10 rounded-2xl flex items-center justify-center cursor-pointer hover:border-black/30 transition-all overflow-hidden relative"
+                    >
+                      {styleImage ? (
+                        <img src={`data:${styleMimeType};base64,${styleImage}`} alt="Style Ref" className="w-full h-full object-cover opacity-50" />
+                      ) : (
+                        <div className="flex flex-col items-center gap-1">
+                          <Upload size={16} className="opacity-40" />
+                          <span className="text-xs font-medium opacity-40">Upload style reference</span>
+                        </div>
+                      )}
+                      <input 
+                        type="file" 
+                        ref={styleFileInputRef} 
+                        onChange={(e) => handleFileUpload(e, 'style')} 
+                        className="hidden" 
+                        accept="image/*"
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-3">

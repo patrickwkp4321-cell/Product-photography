@@ -37,9 +37,10 @@ export async function analyzeProduct(base64Image: string, mimeType: string) {
 
 export async function generateAdVariants(
   base64ProductImage: string, 
-  mimeType: string, 
+  productMimeType: string, 
   scenePrompt: string,
-  aspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9" = "1:1"
+  aspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9" = "1:1",
+  styleReference?: { base64: string; mimeType: string }
 ) {
   const angles = [
     "Front eye-level view",
@@ -50,21 +51,32 @@ export async function generateAdVariants(
 
   const promises = angles.map(async (angle) => {
     const model = "gemini-2.5-flash-image";
-    const fullPrompt = `Create an ultra-realistic, professional product advertisement. 
-    The product in the provided image should be the central focus. 
+    let fullPrompt = `Create an ultra-realistic, professional product advertisement. 
+    The product in the first provided image should be the central focus. 
     Scene: ${scenePrompt}. 
     Camera Angle: ${angle}.
     Ensure high-end commercial photography quality, perfect lighting, and sharp details. 
     The product should look naturally integrated into the environment.`;
 
+    if (styleReference) {
+      fullPrompt += ` Use the second provided image as a style reference for lighting, color palette, and overall aesthetic.`;
+    }
+
+    const contents: any = {
+      parts: [
+        { inlineData: { data: base64ProductImage, mimeType: productMimeType } }
+      ]
+    };
+
+    if (styleReference) {
+      contents.parts.push({ inlineData: { data: styleReference.base64, mimeType: styleReference.mimeType } });
+    }
+
+    contents.parts.push({ text: fullPrompt });
+
     const response = await ai.models.generateContent({
       model,
-      contents: {
-        parts: [
-          { inlineData: { data: base64ProductImage, mimeType } },
-          { text: fullPrompt }
-        ]
-      },
+      contents,
       config: {
         imageConfig: {
           aspectRatio
